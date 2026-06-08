@@ -73,6 +73,8 @@ export default function Home() {
   const [editSlug, setEditSlug] = useState('')
   const [savingFlavor, setSavingFlavor] = useState(false)
   const [deletingFlavor, setDeletingFlavor] = useState(false)
+  const [copyingFlavor, setCopyingFlavor] = useState<number | null>(null)
+
 
   // Captions tab
   const [captionsLoading, setCaptionsLoading] = useState(false)
@@ -220,6 +222,44 @@ export default function Home() {
     setFlavors(flavors.filter(f => f.id !== selectedFlavor.id))
     setSelectedFlavor(null)
     setDeletingFlavor(false)
+  }
+
+  async function copyFlavor(flavor: Flavor) {
+    setCopyingFlavor(flavor.id)
+    const { data: newFlavor, error } = await supabase
+        .from('humor_flavors')
+        .insert([{
+          description: `${flavor.description} (Copy)`,
+          slug: `${flavor.slug}-copy-${Date.now()}`
+        }])
+        .select()
+        .single()
+    if (error || !newFlavor) { setCopyingFlavor(null); return }
+    const { data: sourceSteps } = await supabase
+        .from('humor_flavor_steps')
+        .select('*')
+        .eq('humor_flavor_id', flavor.id)
+        .order('order_by')
+    if (sourceSteps && sourceSteps.length > 0) {
+      await Promise.all(sourceSteps.map((step: Step) =>
+          supabase.from('humor_flavor_steps').insert({
+            humor_flavor_id: newFlavor.id,
+            order_by: step.order_by,
+            llm_system_prompt: step.llm_system_prompt,
+            llm_user_prompt: step.llm_user_prompt,
+            description: step.description,
+            llm_temperature: step.llm_temperature,
+            llm_input_type_id: step.llm_input_type_id,
+            llm_output_type_id: step.llm_output_type_id,
+            llm_model_id: step.llm_model_id,
+            humor_flavor_step_type_id: step.humor_flavor_step_type_id,
+          })
+      ))
+    }
+    setCopyingFlavor(null)
+    await fetchFlavors()
+    setSelectedFlavor(newFlavor)
+    setActiveTab('flavors')
   }
 
   async function addStep() {
@@ -375,7 +415,15 @@ export default function Home() {
   return (
       <div className="min-h-screen bg-white text-gray-900 flex flex-col">
         <nav className="border-b border-gray-200 dark:border-gray-800 px-8 py-4 flex items-center justify-between bg-white dark:bg-gray-900">
-          <h1 className="text-lg font-medium text-gray-900 dark:text-white">🧪 Flavor Manager</h1>
+          <div className="flex items-center gap-3">
+            <img src="/logo3.png" alt="Flavor Manager" className="h-10 w-auto" />
+            <div className="flex flex-col leading-tight">
+              <span className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Flavor Manager</span>
+            </div>
+          </div>
+
+
+
           <div className="flex items-center gap-3">
             {/* Theme toggle */}
             <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
@@ -415,7 +463,9 @@ export default function Home() {
             {/* WELCOME */}
             {activeTab === 'welcome' && (
                 <div className="p-10 max-w-2xl">
-                  <h2 className="text-4xl font-bold mb-4 text-gray-900 dark:text-white leading-tight">Train your humor style.</h2>
+                  <h2 className="text-4xl font-bold" style={{ color: '#a78bfa' }}>Train your humor style.</h2>
+
+
                   <p className="text-gray-500 dark:text-gray-400 text-base mb-10 leading-relaxed">
                     Flavor Manager lets you craft AI caption pipelines with distinct personalities, tones, and punchlines.<br/>
                     From absurdist memes to dry humor, every flavor creates a different comedic experience.
@@ -511,6 +561,13 @@ export default function Home() {
                                   </div>
                                   {/* Actions */}
                                   <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        onClick={() => copyFlavor(flavor)}
+                                        disabled={copyingFlavor === flavor.id}
+                                        className="text-xs font-medium text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-3 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 transition"
+                                    >
+                                      {copyingFlavor === flavor.id ? 'Copying...' : 'Copy'}
+                                    </button>
                                     <button
                                         onClick={() => { setSelectedFlavor(flavor); setEditDesc(flavor.description); setEditSlug(flavor.slug); setEditingFlavor(true) }}
                                         className="text-xs font-medium text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition"
